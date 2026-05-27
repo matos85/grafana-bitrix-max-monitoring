@@ -1,0 +1,11 @@
+# Секреты — не коммитить в GitHub
+.env
+.env.local
+.env.*.local
+.github-credentials
+token.txt
+*.pem
+
+# Python
+__pycache__/
+*.py[cod]

@@ -1,0 +1,45 @@
+{
+  "editable": false,
+  "links": [],
+  "panels": [
+    {
+      "datasource": null,
+      "gridPos": {
+        "h": 24,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "links": [],
+      "options": {
+        "folderId": 0,
+        "maxItems": 50,
+        "query": "",
+        "showHeadings": true,
+        "showRecentlyViewed": true,
+        "showSearch": true,
+        "showStarred": true,
+        "tags": []
+      },
+      "title": "Дашборды",
+      "type": "dashlist"
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": [],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timepicker": {
+    "hidden": true,
+    "type": "timepicker"
+  },
+  "timezone": "browser",
+  "title": "Главная",
+  "uid": "home"
+}

@@ -1,0 +1,31 @@
+# Конфигурация Prometheus (стек monitoring).
+# Подписи targets — label description (видно в Status → Targets).
+# Веб-интерфейс Prometheus только на английском; для UI на русском — Grafana.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+        labels:
+          description: "Сам Prometheus: служебные метрики, TSDB, scrape"
+          service: "Prometheus"
+
+  - job_name: grafana
+    static_configs:
+      - targets: ["grafana:3000"]
+        labels:
+          description: "Grafana /metrics — внутренние метрики дашбордов"
+          service: "Grafana"
+
+  - job_name: max-messenger
+    scrape_interval: 10s
+    static_configs:
+      - targets: ["max-metrics:8080"]
+        labels:
+          description: "MAX-мессенджер: счётчики действий (POST событий на :9093)"
+          service: "MAX Metrics"
+          events_url: "http://HOST:9093/api/v1/events"

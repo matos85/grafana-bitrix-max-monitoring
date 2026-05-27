@@ -1,0 +1,387 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "description": "Мониторинг действий пользователей в мессенджере MAX. Выберите период в правом верхнем углу (по умолчанию — последние 24 часа).",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "links": [],
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
+      "title": "Обзор",
+      "type": "row"
+    },
+    {
+      "datasource": "Prometheus",
+      "description": "**Что показывает:** общее число всех действий пользователей за выбранный период.\n\n**Как читать:** одно число — сумма по всем типам действий (сообщения, звонки, оплаты и т.д.).\n\n**Пример:** значение `150` — за период зафиксировано 150 действий.",
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
+      "id": 1,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "editorMode": "code",
+          "expr": "sum(increase(max_messenger_events_total{action!=\"pay_sum\"}[$__range]))",
+          "instant": true,
+          "legendFormat": "Всего событий",
+          "refId": "A"
+        }
+      ],
+      "title": "Событий за период",
+      "type": "stat"
+    },
+    {
+      "datasource": "Prometheus",
+      "description": "**Что показывает:** сколько разных пользователей (по ID) выполняли хотя бы одно действие за период.\n\n**Как читать:** каждый уникальный `USER_ID` считается один раз.\n\n**Пример:** значение `12` — действия совершили 12 разных пользователей.",
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "blue", "value": null }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
+      "id": 2,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "editorMode": "code",
+          "expr": "count(count by (user_id) (max_messenger_events_total{action!=\"pay_sum\"}))",
+          "instant": true,
+          "legendFormat": "Пользователей",
+          "refId": "A"
+        }
+      ],
+      "title": "Активных пользователей",
+      "type": "stat"
+    },
+    {
+      "datasource": "Prometheus",
+      "description": "**Что показывает:** как часто происходят действия каждого типа (линии — типы действий).\n\n**Как читать:**\n- Ось **X** — время.\n- Ось **Y** — количество событий в минуту (средняя скорость за 5 минут).\n- Чем выше линия — тем активнее этот тип действия.\n\n**Пример:** линия «Отправлено сообщений» растёт в 14:00 — в этот час отправляют больше сообщений.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "Событий в минуту",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 20,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "insertNulls": false,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "normal" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
+      "id": 3,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "editorMode": "code",
+          "expr": "sum by (action) (label_replace(label_replace(label_replace(label_replace(label_replace(label_replace(rate(max_messenger_events_total{action!=\"pay_sum\"}[5m]), \"action\", \"Прочитано сообщений\", \"action\", \"read_message\"), \"action\", \"Отправлено сообщений\", \"action\", \"send_message\"), \"action\", \"Загружено файлов\", \"action\", \"upload_file\"), \"action\", \"Оплата устройства\", \"action\", \"pay_device\"), \"action\", \"Открыто чатов\", \"action\", \"open_chat\"), \"action\", \"Звонков\", \"action\", \"call_start\"))",
+          "legendFormat": "{{action}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Интенсивность по типам действий",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 9 },
+      "id": 101,
+      "title": "Действия пользователей (накопительно)",
+      "type": "row"
+    },
+    {
+      "datasource": "Prometheus",
+      "description": "**Что показывает:** сводная таблица — сколько раз каждый пользователь выполнил каждый тип действия за выбранный период.\n\n**Как читать:**\n- **ID пользователя** — идентификатор из MAX.\n- Столбцы — типы действий (на русском).\n- Число в ячейке — сколько раз действие выполнено.\n- Строка **Итого** — сумма по всем пользователям.\n\n**Пример:** у пользователя `797` в столбце «Отправлено сообщений» стоит `5` — он отправил 5 сообщений за период.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": { "type": "auto" },
+            "inspect": false
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "ID пользователя" },
+            "properties": [
+              { "id": "custom.width", "value": 130 }
+            ]
+          }
+        ]
+      },
+      "gridPos": { "h": 12, "w": 14, "x": 0, "y": 10 },
+      "id": 10,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": [],
+          "show": false
+        },
+        "showHeader": true,
+        "sortBy": [{ "desc": true, "displayName": "Отправлено сообщений" }]
+      },
+      "pluginVersion": "12.0.0",
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "editorMode": "code",
+          "expr": "sum by (user_id, action) (label_replace(label_replace(label_replace(label_replace(label_replace(label_replace(increase(max_messenger_events_total{action!=\"pay_sum\"}[$__range]), \"action\", \"Прочитано сообщений\", \"action\", \"read_message\"), \"action\", \"Отправлено сообщений\", \"action\", \"send_message\"), \"action\", \"Загружено файлов\", \"action\", \"upload_file\"), \"action\", \"Оплата устройства\", \"action\", \"pay_device\"), \"action\", \"Открыто чатов\", \"action\", \"open_chat\"), \"action\", \"Звонков\", \"action\", \"call_start\"))",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "__auto",
+          "refId": "A"
+        },
+        {
+          "datasource": "Prometheus",
+          "editorMode": "code",
+          "expr": "sum by (user_id, action) (label_replace(label_replace(label_replace(label_replace(label_replace(label_replace(label_replace(increase(max_messenger_events_total{action!=\"pay_sum\"}[$__range]), \"user_id\", \"Итого\", \"user_id\", \".+\"), \"action\", \"Прочитано сообщений\", \"action\", \"read_message\"), \"action\", \"Отправлено сообщений\", \"action\", \"send_message\"), \"action\", \"Загружено файлов\", \"action\", \"upload_file\"), \"action\", \"Оплата устройства\", \"action\", \"pay_device\"), \"action\", \"Открыто чатов\", \"action\", \"open_chat\"), \"action\", \"Звонков\", \"action\", \"call_start\"))",
+          "format": "table",
+          "hide": true,
+          "instant": true,
+          "legendFormat": "__auto",
+          "refId": "B"
+        }
+      ],
+      "title": "Накопленные действия по пользователям",
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "groupingToMatrix",
+          "options": {
+            "columnField": "action",
+            "rowField": "user_id",
+            "valueField": "Value"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "pay_sum": true
+            },
+            "indexByName": {},
+            "renameByName": {
+              "user_id": "ID пользователя",
+              "user_id\\action": "ID пользователя"
+            }
+          }
+        }
+      ],
+      "type": "table"
+    },
+    {
+      "datasource": "Prometheus",
+      "description": "**Что показывает:** сравнение пользователей — длина полосы соответствует количеству действий.\n\n**Как читать:**\n- Каждая полоса — один пользователь и один тип действия.\n- Чем длиннее полоса — тем больше действий за период.\n- Цвета в легенде внизу — тип действия (на русском).\n\n**Пример:** длинная полоса «113 — Отправлено сообщений» — пользователь 113 чаще других отправляет сообщения.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "Количество событий",
+            "axisPlacement": "auto",
+            "fillOpacity": 80,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineWidth": 1,
+            "scaleDistribution": { "type": "linear" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 12, "w": 10, "x": 14, "y": 10 },
+      "id": 11,
+      "options": {
+        "barRadius": 0.1,
+        "barWidth": 0.8,
+        "fullHighlight": false,
+        "groupWidth": 0.7,
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "orientation": "horizontal",
+        "showValue": "auto",
+        "stacking": "normal",
+        "tooltip": { "mode": "multi", "sort": "desc" },
+        "xTickLabelRotation": 0,
+        "xTickLabelSpacing": 0
+      },
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "editorMode": "code",
+          "expr": "sum by (user_id, action) (label_replace(label_replace(label_replace(label_replace(label_replace(label_replace(increase(max_messenger_events_total{action!=\"pay_sum\"}[$__range]), \"action\", \"Прочитано сообщений\", \"action\", \"read_message\"), \"action\", \"Отправлено сообщений\", \"action\", \"send_message\"), \"action\", \"Загружено файлов\", \"action\", \"upload_file\"), \"action\", \"Оплата устройства\", \"action\", \"pay_device\"), \"action\", \"Открыто чатов\", \"action\", \"open_chat\"), \"action\", \"Звонков\", \"action\", \"call_start\"))",
+          "format": "time_series",
+          "instant": true,
+          "legendFormat": "Пользователь {{user_id}} — {{action}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Сравнение пользователей по действиям",
+      "type": "barchart"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 22 },
+      "id": 102,
+      "title": "Динамика",
+      "type": "row"
+    },
+    {
+      "datasource": "Prometheus",
+      "description": "**Что показывает:** как накапливаются события во времени — отдельная линия (или слой) для каждой пары «пользователь + действие».\n\n**Как читать:**\n- Ось **X (внизу)** — время.\n- Ось **Y (слева)** — количество событий за интервал обновления.\n- Каждый цвет — конкретный пользователь и тип действия (см. легенду справа).\n- Рост линии вверх — действия происходят чаще; плато — активность стабильна.\n\n**Пример:** линия «Пользователь 797 · Отправлено сообщений» резко поднимается в 10:00 — в 10:00 пользователь 797 активно отправлял сообщения.\n\n**Подсказка:** наведите курсор на график — во всплывающей подсказке будут точные значения.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "Количество событий",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "bars",
+            "fillOpacity": 90,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "normal" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 23 },
+      "id": 20,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "right",
+          "showLegend": true
+        },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "editorMode": "code",
+          "expr": "sum by (user_id, action) (label_replace(label_replace(label_replace(label_replace(label_replace(label_replace(increase(max_messenger_events_total{action!=\"pay_sum\"}[$__interval]), \"action\", \"Прочитано сообщений\", \"action\", \"read_message\"), \"action\", \"Отправлено сообщений\", \"action\", \"send_message\"), \"action\", \"Загружено файлов\", \"action\", \"upload_file\"), \"action\", \"Оплата устройства\", \"action\", \"pay_device\"), \"action\", \"Открыто чатов\", \"action\", \"open_chat\"), \"action\", \"Звонков\", \"action\", \"call_start\"))",
+          "legendFormat": "Пользователь {{user_id}} · {{action}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Накопление событий по пользователям и действиям",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["max", "мессенджер"],
+  "templating": { "list": [] },
+  "time": { "from": "now-24h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "MAX — мониторинг мессенджера",
+  "uid": "max-messenger"
+}
