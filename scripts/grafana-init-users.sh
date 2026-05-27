@@ -1,4 +1,9 @@
 #!/bin/sh
+# Инициализация Grafana после первого запуска контейнеров:
+#   - ожидание готовности API
+#   - исправление uid источника Prometheus (должен быть "prometheus")
+#   - язык организации ru-RU, home-дашборд
+#   - создание локального пользователя Viewer из переменных .env
 set -eu
 
 GRAFANA_URL="${GRAFANA_URL:-http://grafana:3000}"
@@ -8,6 +13,7 @@ VIEWER_USER="${GF_VIEWER_USER:-viewer}"
 VIEWER_PASS="${GF_VIEWER_PASSWORD:-viewer}"
 VIEWER_EMAIL="${GF_VIEWER_EMAIL:-viewer@local}"
 
+# Приводит uid datasource Prometheus к "prometheus" (нужно для provisioning дашбордов).
 fix_prometheus_datasource_uid() {
   ds_json=$(curl -sf -u "${auth}" "${GRAFANA_URL}/api/datasources/name/Prometheus" 2>/dev/null) || return 0
   ds_id=$(printf '%s' "${ds_json}" | grep -o '"id":[0-9]*' | head -1 | grep -o '[0-9]*')

@@ -1,3 +1,4 @@
+# Provisioning Grafana: источник данных Prometheus (внутренний URL Docker-сети).
 apiVersion: 1
 
 # Пересоздать DS с uid=prometheus (иначе дашборды с uid prometheus пустые)

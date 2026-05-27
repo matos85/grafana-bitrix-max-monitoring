@@ -1,5 +1,6 @@
 #!/bin/sh
-# Скачивает ru-RU/grafana.json для монтирования в Grafana.
+# Скачивает ru-RU/grafana.json для монтирования в Grafana (русский интерфейс).
+# Запуск: ./scripts/download-grafana-locale.sh
 set -eu
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT="${ROOT}/grafana/locales/ru-RU/grafana.json"

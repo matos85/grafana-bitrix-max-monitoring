@@ -1,3 +1,4 @@
+# Provisioning Grafana: автозагрузка JSON-дашбордов из каталога provisioning.
 apiVersion: 1
 
 providers:

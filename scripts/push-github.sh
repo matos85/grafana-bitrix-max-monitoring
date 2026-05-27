@@ -1,5 +1,6 @@
 #!/bin/sh
-# Отправка в GitHub. Учётные данные — из .github-credentials (не коммитится).
+# Отправка коммитов в GitHub. Учётные данные — из .github-credentials (не коммитится).
+# Использует x-access-token для HTTPS push (рекомендуется GitHub PAT).
 set -eu
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -28,5 +29,5 @@ fi
 cd "${ROOT}"
 git remote set-url origin "${REMOTE}"
 echo "Push ${BRANCH} → ${REMOTE} (user: ${USER})"
-git -c "http.extraHeader=Authorization: Basic $(printf '%s' "${USER}:${TOKEN}" | base64 | tr -d '\n')" \
+git -c "http.extraHeader=Authorization: Basic $(printf 'x-access-token:%s' "${TOKEN}" | base64 | tr -d '\n')" \
   push -u origin "${BRANCH}"

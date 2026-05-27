@@ -1,4 +1,16 @@
-"""OAuth2-мост: Bitrix24 → Grafana / oauth2-proxy."""
+"""
+OAuth2-мост: Bitrix24 → Grafana и oauth2-proxy (Prometheus UI).
+
+Реализует минимальный OIDC-провайдер поверх Bitrix24 OAuth:
+  GET  /.well-known/openid-configuration, /.well-known/jwks.json
+  GET  /oauth/authorize  — редирект на Bitrix24
+  GET  /oauth/callback   — возврат кода в Grafana / oauth2-proxy
+  POST /oauth/token      — обмен code на токены Bitrix + id_token для proxy
+  GET  /userinfo         — профиль по Bearer access_token
+  GET  /health           — проверка работы сервиса
+
+Публичный URL задаётся переменной OAUTH_BRIDGE_PUBLIC_URL в .env.
+"""
 
 from __future__ import annotations
 
@@ -19,6 +31,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 
 
 def _require_env(name: str) -> str:
+    """Читает обязательную переменную окружения; при отсутствии завершает процесс."""
     value = os.environ.get(name, "").strip()
     if not value:
         raise SystemExit(
@@ -57,6 +70,7 @@ _JWT_ALG = "RS256"
 
 
 def _load_jwt_private_key():
+    """Загружает RSA-ключ из PEM или генерирует временный ключ при старте."""
     pem = os.environ.get("OAUTH_BRIDGE_JWT_PRIVATE_KEY_PEM", "").strip()
     if pem:
         return serialization.load_pem_private_key(pem.encode("utf-8"), password=None)
@@ -72,6 +86,7 @@ _JWT_PUBLIC_KEY = _JWT_PRIVATE_KEY.public_key()
 
 
 def _jwks_document() -> dict:
+    """Формирует JWKS для проверки id_token (oauth2-proxy)."""
     numbers = _JWT_PUBLIC_KEY.public_numbers()
     return {
         "keys": [
@@ -92,6 +107,7 @@ def _jwks_document() -> dict:
 
 
 def _make_id_token(userinfo: dict, *, client_id: str, expires_in: int) -> str:
+    """Подписывает JWT id_token с claims пользователя для OIDC-клиента."""
     now = int(time.time())
     claims = {
         "iss": BRIDGE_PUBLIC_URL,
@@ -118,6 +134,7 @@ def _make_id_token(userinfo: dict, *, client_id: str, expires_in: int) -> str:
 
 
 def _enrich_token_response(token_payload: dict, *, client_id: str) -> dict:
+    """Добавляет id_token в ответ /oauth/token, если его нет (нужно oauth2-proxy)."""
     if token_payload.get("id_token"):
         return token_payload
     access_token = str(token_payload.get("access_token") or "").strip()
@@ -144,10 +161,12 @@ def _enrich_token_response(token_payload: dict, *, client_id: str) -> dict:
 
 
 def _normalize_redirect(uri: str) -> str:
+    """Убирает query и хвостовой слэш для сравнения redirect_uri."""
     return uri.split("?", 1)[0].rstrip("/")
 
 
 def _allowed_redirects() -> frozenset[str]:
+    """Список разрешённых redirect_uri: Grafana и Prometheus (oauth2-proxy)."""
     allowed = {_normalize_redirect(GRAFANA_OAUTH_REDIRECT_URL)}
     prom = os.environ.get("PROMETHEUS_PUBLIC_URL", "").strip().rstrip("/")
     if prom:
@@ -156,10 +175,12 @@ def _allowed_redirects() -> frozenset[str]:
 
 
 def _redirect_allowed(uri: str) -> bool:
+    """Проверяет, что redirect_uri клиента OAuth разрешён."""
     return _normalize_redirect(uri) in _allowed_redirects()
 
 
 def _decode_pending_cookie(raw: str) -> dict | None:
+    """Декодирует cookie с сохранённым redirect_uri между authorize и callback."""
     try:
         pad = "=" * (-len(raw) % 4)
         data = json.loads(base64.urlsafe_b64decode(raw + pad).decode("utf-8"))
@@ -169,11 +190,13 @@ def _decode_pending_cookie(raw: str) -> dict | None:
 
 
 def _client_secret_configured() -> bool:
+    """True, если задан реальный BITRIX_CLIENT_SECRET (не placeholder)."""
     secret = (BITRIX_CLIENT_SECRET or "").strip()
     return bool(secret) and secret not in ("changeme", "unused")
 
 
 def _normalize_rest_endpoint(endpoint: str) -> str:
+    """Приводит URL REST Bitrix к виду .../rest/."""
     value = (endpoint or "").strip() or DEFAULT_BITRIX_REST_BASE
     if not value.endswith("/"):
         value += "/"
@@ -183,6 +206,7 @@ def _normalize_rest_endpoint(endpoint: str) -> str:
 
 
 def _remember_token_payload(access_token: str, token_payload: dict) -> None:
+    """Кэширует ответ Bitrix token и REST-endpoints для последующих вызовов."""
     _bitrix_token_payloads[access_token] = (
         token_payload,
         time.time() + BITRIX_TOKEN_CACHE_TTL,
@@ -201,6 +225,7 @@ def _remember_token_payload(access_token: str, token_payload: dict) -> None:
 
 
 def _get_token_payload(access_token: str) -> dict | None:
+    """Возвращает кэшированный payload токена Bitrix или None при истечении TTL."""
     entry = _bitrix_token_payloads.get(access_token)
     if not entry:
         return None
@@ -212,6 +237,7 @@ def _get_token_payload(access_token: str) -> dict | None:
 
 
 def _rest_endpoints_for_token(access_token: str) -> list[str]:
+    """Список REST URL для токена (из token response или DEFAULT_BITRIX_REST_BASE)."""
     entry = _bitrix_rest_endpoints.get(access_token)
     if entry:
         endpoints, expires = entry
@@ -229,6 +255,7 @@ def _bitrix_rest_payload(
     *,
     use_get: bool = False,
 ) -> dict:
+    """Выполняет один HTTP-запрос к Bitrix REST и возвращает JSON."""
     query = {"auth": access_token, **(params or {})}
     url = f"{rest_base.rstrip('/')}/{method}.json?{urlencode(query)}"
     if use_get:
@@ -251,6 +278,7 @@ def _bitrix_rest_payload(
 def _bitrix_rest_call(
     rest_base: str, method: str, access_token: str, params: dict | None = None
 ) -> dict:
+    """Вызывает REST-метод Bitrix; пробует POST, затем GET при ошибке."""
     last_error: ValueError | None = None
     for use_get in (False, True):
         try:
@@ -274,6 +302,7 @@ def _bitrix_rest_call(
 def _bitrix_rest_list(
     rest_base: str, method: str, access_token: str, params: dict | None = None
 ) -> list:
+    """REST-вызов, ожидающий list в поле result (например scope)."""
     payload = _bitrix_rest_payload(rest_base, method, access_token, params)
     if "error" in payload:
         raise ValueError(payload.get("error_description") or payload["error"])
@@ -284,6 +313,7 @@ def _bitrix_rest_list(
 
 
 def _log_bitrix_token_diagnostics(access_token: str, token_payload: dict) -> None:
+    """Пишет в лог scope() Bitrix для диагностики прав приложения."""
     scopes: list[str] = []
     for rest_base in _rest_endpoints_for_token(access_token):
         try:
@@ -333,6 +363,7 @@ def _format_oidc_userinfo(
 
 
 def _bitrix_user_to_userinfo(user: dict) -> dict:
+    """Преобразует объект user из Bitrix REST в OIDC UserInfo."""
     user_id = str(user.get("ID") or user.get("id") or "")
     email = str(user.get("EMAIL") or user.get("email") or "").strip()
     first = str(user.get("NAME") or user.get("name") or "").strip()
@@ -354,6 +385,7 @@ def _bitrix_user_to_userinfo(user: dict) -> dict:
 
 
 def _userinfo_from_bitrix_token_payload(token_payload: dict) -> dict:
+    """Минимальный UserInfo из полей token response, если REST profile недоступен."""
     member_id = str(token_payload.get("member_id") or "").strip()
     user_id = str(token_payload.get("user_id") or "").strip()
     scope = str(token_payload.get("scope") or "").strip()
@@ -369,6 +401,7 @@ def _userinfo_from_bitrix_token_payload(token_payload: dict) -> dict:
 def _cache_bitrix_userinfo(
     access_token: str, token_payload: dict | None = None
 ) -> dict | None:
+    """Загружает профиль из Bitrix REST и сохраняет в кэше по access_token."""
     if token_payload:
         _remember_token_payload(access_token, token_payload)
 
@@ -420,6 +453,7 @@ def _cache_bitrix_userinfo(
 
 
 def _get_cached_userinfo(access_token: str) -> dict | None:
+    """Возвращает UserInfo из кэша или None при истечении TTL."""
     entry = _bitrix_userinfo_cache.get(access_token)
     if not entry:
         return None
@@ -431,6 +465,7 @@ def _get_cached_userinfo(access_token: str) -> dict | None:
 
 
 def userinfo_from_token(access_token: str) -> dict:
+    """Публичная точка: UserInfo по access_token Bitrix (с кэшем)."""
     cached = _get_cached_userinfo(access_token)
     if cached:
         return cached
@@ -441,6 +476,8 @@ def userinfo_from_token(access_token: str) -> dict:
 
 
 class Handler(BaseHTTPRequestHandler):
+    """HTTP-обработчик OIDC-моста Bitrix24."""
+
     server_version = "OAuthBridge/2.0"
 
     def log_message(self, fmt: str, *args) -> None:
@@ -453,6 +490,7 @@ class Handler(BaseHTTPRequestHandler):
         *,
         extra_headers: list[tuple[str, str]] | None = None,
     ) -> None:
+        """Отправляет JSON-ответ с no-store заголовками."""
         data = json.dumps(body, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -465,6 +503,7 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def _bearer_userinfo(self) -> dict | None:
+        """Извлекает Bearer-токен и возвращает UserInfo или отправляет 401/502."""
         auth = self.headers.get("Authorization", "")
         if not auth.lower().startswith("bearer "):
             self._json(
@@ -483,15 +522,15 @@ class Handler(BaseHTTPRequestHandler):
             return None
         try:
             return userinfo_from_token(token)
-        except (HTTPError, URLError, ValueError, json.JSONDecodeError, TimeoutError) as exc:
-            self._json(HTTPStatus.BAD_GATEWAY, {"error": "userinfo_failed", "detail": str(exc)})
-            return None
         except ValueError:
             self._json(
                 HTTPStatus.UNAUTHORIZED,
                 {"error": "invalid_token", "error_description": "Access token not accepted"},
                 extra_headers=[("WWW-Authenticate", 'Bearer error="invalid_token"')],
             )
+            return None
+        except (HTTPError, URLError, json.JSONDecodeError, TimeoutError) as exc:
+            self._json(HTTPStatus.BAD_GATEWAY, {"error": "userinfo_failed", "detail": str(exc)})
             return None
 
     def do_GET(self) -> None:
@@ -590,6 +629,7 @@ class Handler(BaseHTTPRequestHandler):
         self._exchange_token(parse_qs(raw))
 
     def _authorize(self, query: dict[str, list[str]]) -> None:
+        """Старт OAuth: сохраняет redirect клиента и перенаправляет на Bitrix24."""
         client_redirect = (query.get("redirect_uri") or [""])[0]
         state = (query.get("state") or [""])[0]
         client_id = (query.get("client_id") or [BITRIX_CLIENT_ID])[0]
@@ -625,6 +665,7 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def _pending_from_cookie(self) -> dict | None:
+        """Читает pending redirect из HttpOnly cookie."""
         prefix = f"{PENDING_COOKIE}="
         for part in self.headers.get("Cookie", "").split(";"):
             part = part.strip()
@@ -633,6 +674,7 @@ class Handler(BaseHTTPRequestHandler):
         return None
 
     def _oauth_callback(self, query: dict[str, list[str]]) -> None:
+        """Callback Bitrix: передаёт code обратно в Grafana или oauth2-proxy."""
         code = (query.get("code") or [""])[0]
         state = (query.get("state") or [""])[0]
         if not code:
@@ -658,6 +700,7 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def _exchange_token(self, params: dict[str, list[str]]) -> None:
+        """POST /oauth/token: обмен code на токены Bitrix и дополнение id_token."""
         if not _client_secret_configured():
             self._json(
                 HTTPStatus.BAD_REQUEST,

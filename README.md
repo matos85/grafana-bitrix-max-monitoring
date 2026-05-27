@@ -224,6 +224,74 @@ docker compose --env-file .env ps
 
 ---
 
+## Prometheus: эндпоинты и проверка после сборки
+
+**Prometheus** собирает метрики со всех сервисов стека. Веб-интерфейс Prometheus доступен **с OAuth** (через Bitrix, как Grafana). Для графиков на русском удобнее **Grafana** — источник данных Prometheus уже подключён.
+
+### Публичные URL (из `.env`)
+
+Подставьте значения из вашего `.env` (пример портов — в `.env.example`):
+
+| Сервис | Переменная / путь | Назначение |
+|--------|-------------------|------------|
+| Prometheus UI | `PROMETHEUS_PUBLIC_URL` | Targets, Graph, Alerts (вход через oauth2-proxy + Bitrix) |
+| Grafana | `GRAFANA_ROOT_URL` | Дашборды, Explore → Prometheus |
+| OAuth-мост | `OAUTH_BRIDGE_PUBLIC_URL` | OIDC для Grafana и oauth2-proxy |
+| MAX ingest | `http://<GRAFANA_DOMAIN>:<MAX_METRICS_PORT>/api/v1/events` | POST событий (не Prometheus) |
+| MAX health | `http://<GRAFANA_DOMAIN>:<MAX_METRICS_PORT>/health` | Проверка сервиса max-metrics |
+| MAX metrics | `http://<GRAFANA_DOMAIN>:<MAX_METRICS_PORT>/metrics` | Сырые метрики (для отладки; основной сбор — через Prometheus) |
+
+### Внутри Docker (между контейнерами)
+
+| Target | URL | Кто опрашивает |
+|--------|-----|----------------|
+| Prometheus | `http://prometheus:9090` | сам себя, Grafana (datasource) |
+| Grafana | `http://grafana:3000/metrics` | Prometheus (job `grafana`) |
+| MAX metrics | `http://max-metrics:8080/metrics` | Prometheus (job `max-messenger`) |
+| OAuth-мост | `http://oauth-bridge:8080/health` | ручная проверка / мониторинг |
+
+Конфиг scrape: [`prometheus/prometheus.yml`](prometheus/prometheus.yml).
+
+### Jobs Prometheus (что должно быть UP)
+
+После `docker compose --env-file .env up -d --build` откройте **`PROMETHEUS_PUBLIC_URL`** → **Status → Targets** (или **Статус → Цели**):
+
+| Job | Target | Метрики |
+|-----|--------|---------|
+| `prometheus` | `localhost:9090` | Служебные метрики TSDB |
+| `grafana` | `grafana:3000` | Внутренние метрики Grafana |
+| `max-messenger` | `max-metrics:8080` | `max_messenger_events_total{user_id, action}` |
+
+Все три цели в состоянии **UP** — норма.
+
+### Быстрая проверка с сервера
+
+```bash
+# Статус контейнеров
+docker compose --env-file .env ps
+
+# Health сервисов (подставьте хост/порты из .env)
+curl -s "http://127.0.0.1:${MAX_METRICS_PORT:-9093}/health"
+curl -s "http://127.0.0.1:${OAUTH_BRIDGE_PORT:-4181}/health"
+
+# Тестовые события MAX → рост метрик
+python3 scripts/generate-max-events.py --url "http://127.0.0.1:${MAX_METRICS_PORT:-9093}/api/v1/events"
+
+# Метрика в Prometheus (из контейнера prometheus)
+docker compose --env-file .env exec prometheus wget -qO- \
+  'http://localhost:9090/api/v1/query?query=max_messenger_events_total' | head -c 500
+```
+
+В **Grafana** → **Explore** → Prometheus выполните запрос:
+
+```promql
+max_messenger_events_total
+```
+
+или откройте дашборд **«MAX — мониторинг мессенджера»**.
+
+---
+
 ## Как пользоваться после установки
 
 ### Войти в Grafana
